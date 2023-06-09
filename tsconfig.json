@@ -1,16 +1,41 @@
 {
-  "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "target": "es5",
-    "module": "commonjs",
-    "lib": ["es2015"],
-    "outDir": "dist",
-    "declaration": true,
-    "strict": true
-  },
+  "compileOnSave": false,
   "include": [
-    "./src/index.ts"
-  ]
+    "sources/**/*.ts",
+    "sources/migrations/*.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ],
+  "compilerOptions": {
+    "declaration": true,
+    "downlevelIteration": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "emitDecoratorMetadata": true,
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "sourceMap": true,
+    "target": "es6",
+    "typeRoots": [
+      "node_modules/@types"
+    ],
+    "lib": [
+      "ESNext"
+    ],
+    "noUnusedLocals": true,
+    "noImplicitThis": true,
+    "noUnusedParameters": true,
+    "noStrictGenericChecks": false,
+    "removeComments": true,
+    "experimentalDecorators": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnreachableCode": false,
+    "strictNullChecks": true,
+    "alwaysStrict": true,
+    "strictFunctionTypes": true
+  }
 }
