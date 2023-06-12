@@ -1,23 +1,19 @@
+// Need to require `pg` like this to avoid ugly error message (see #15)
+import * as pg from 'pg';
 import createDebugLogger from 'debug';
+import { WAsyncThrowableType, WMaybeType, wNothing, WNothingType } from '@w-utility';
 import * as EventEmitter from 'events';
 import * as format from 'pg-format';
 import TypedEventEmitter from 'typed-emitter';
+import { WPgOptionsType, WPgNotificationType, WPgConnectResultType } from './types';
+import { WPgReconnectFunctionType } from './types/w-pg-reconnect-function.type';
 
-// Need to require `pg` like this to avoid ugly error message (see #15)
-import pg = require('pg')
-
-const connectionLogger = createDebugLogger('pg-listen:connection');
-const notificationLogger = createDebugLogger('pg-listen:notification');
-const paranoidLogger = createDebugLogger('pg-listen:paranoid');
-const subscriptionLogger = createDebugLogger('pg-listen:subscription');
+const connectionLogger: debug.Debugger = createDebugLogger('pg-listen:connection');
+const notificationLogger: debug.Debugger = createDebugLogger('pg-listen:notification');
+const paranoidLogger: debug.Debugger = createDebugLogger('pg-listen:paranoid');
+const subscriptionLogger: debug.Debugger = createDebugLogger('pg-listen:subscription');
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-interface PgNotification {
-  processId: number,
-  channel: string,
-  payload?: string
-}
 
 export interface PgParsedNotification {
   processId: number,
@@ -32,55 +28,10 @@ interface PgListenEvents {
   reconnect: (attempt: number) => void
 }
 
-type EventsToEmitterHandlers<Events extends Record<string, any>> = {
-  [channelName in keyof Events]: (payload: Events[channelName]) => void
-}
-
-export interface Options {
-  /**
-   * Using native PG client? Defaults to false.
-   */
-  native?: boolean
-
-  /**
-   * Interval in ms to run a trivial query on the DB to see if
-   * the database connection still works.
-   * Defaults to 30s.
-   */
-  paranoidChecking?: number | false
-
-  /**
-   * How much time to wait between reconnection attempts (if failed).
-   * Can also be a callback returning a delay in milliseconds.
-   * Defaults to 500 ms.
-   */
-  retryInterval?: number | ((attempt: number) => number)
-
-  /**
-   * How many attempts to reconnect after connection loss.
-   * Defaults to no limit, but a default retryTimeout is set.
-   */
-  retryLimit?: number
-
-  /**
-   * Timeout in ms after which to stop retrying and just fail. Defaults to 3000 ms.
-   */
-  retryTimeout?: number
-
-  /**
-   * Custom function to control how the payload data is stringified on `.notify()`.
-   * Use together with the `serialize` option. Defaults to `JSON.parse`.
-   */
-  parse?: (serialized: string) => any
-
-  /**
-   * Custom function to control how the payload data is stringified on `.notify()`.
-   * Use together with the `parse` option. Defaults to `JSON.stringify`.
-   */
-  serialize?: (data: any) => string
-}
-
-function connect(connectionConfig: pg.ClientConfig | undefined, emitter: TypedEventEmitter<PgListenEvents>, options: Options) {
+function connect(
+  connectionConfig: WMaybeType<pg.ClientConfig>,
+  options: WPgOptionsType
+): WPgConnectResultType {
   connectionLogger('Creating PostgreSQL client for notification streaming');
 
   const { retryInterval = 500, retryLimit = Infinity, retryTimeout = 3000 } = options;
@@ -90,7 +41,7 @@ function connect(connectionConfig: pg.ClientConfig | undefined, emitter: TypedEv
   const dbClient = new Client(effectiveConnectionConfig);
   const getRetryInterval = typeof retryInterval === 'function' ? retryInterval : () => retryInterval;
 
-  const reconnect = async (onAttempt: (attempt: number) => void): Promise<pg.Client> => {
+  const reconnect: WPgReconnectFunctionType = async (onAttempt: (attempt: number) => void): WAsyncThrowableType<pg.Client> => {
     connectionLogger('Reconnecting to PostgreSQL for notification streaming');
     const startTime = Date.now();
 
@@ -100,16 +51,16 @@ function connect(connectionConfig: pg.ClientConfig | undefined, emitter: TypedEv
 
       try {
         const newClient = new Client(effectiveConnectionConfig);
+
         const connecting = new Promise((resolve, reject) => {
           newClient.once('connect', resolve);
           newClient.once('end', () => reject(Error('Connection ended.')));
           newClient.once('error', reject);
         });
-        await Promise.all([
-          newClient.connect(),
-          connecting
-        ]);
+
+        await Promise.all([newClient.connect(), connecting]);
         connectionLogger('PostgreSQL reconnection succeeded');
+
         return newClient;
       } catch (error) {
         connectionLogger('PostgreSQL reconnection attempt failed:', error);
@@ -135,31 +86,41 @@ function forwardDBNotificationEvents (
   emitter: TypedEventEmitter<PgListenEvents>,
   parse: (stringifiedData: string) => any
 ) {
-  const onNotification = (notification: PgNotification) => {
+  const onNotification = (notification: WPgNotificationType): WNothingType => {
     notificationLogger(`Received PostgreSQL notification on "${notification.channel}":`, notification.payload);
 
-    let payload;
+    let payload: object;
+
     try {
       payload = notification.payload ? parse(notification.payload) : undefined;
     } catch (error) {
       error.message = `Error parsing PostgreSQL notification payload: ${error.message}`;
-      return emitter.emit('error', error);
+      emitter.emit('error', error);
+      return;
     }
+
     emitter.emit('notification', {
       processId: notification.processId,
       channel: notification.channel,
       payload
     });
+
+    return;
   };
 
   dbClient.on('notification', onNotification);
 
-  return function cancelNotificationForwarding () {
+  return function cancelNotificationForwarding (): WNothingType {
     dbClient.removeListener('notification', onNotification);
+    return;
   };
 }
 
-function scheduleParanoidChecking (dbClient: pg.Client, intervalTime: number, reconnect: () => Promise<void>) {
+function scheduleParanoidChecking(
+  dbClient: pg.Client,
+  intervalTime: number,
+  reconnect: () => Promise<void>
+): () => WNothingType {
   const scheduledCheck = async () => {
     try {
       await dbClient.query('SELECT pg_backend_pid()');
@@ -171,10 +132,11 @@ function scheduleParanoidChecking (dbClient: pg.Client, intervalTime: number, re
     }
   };
 
-  const interval = setInterval(scheduledCheck, intervalTime);
+  const interval: NodeJS.Timer = setInterval(scheduledCheck, intervalTime);
 
-  return function unschedule () {
+  return function unschedule(): WNothingType {
     clearInterval(interval);
+    return;
   };
 }
 
@@ -182,8 +144,8 @@ export interface Subscriber<Events extends Record<string, any> = { [channel: str
     /** Emits events: "error", "notification" & "redirect" */
     events: TypedEventEmitter<PgListenEvents>;
     /** For convenience: Subscribe to distinct notifications here, event name = channel name */
-    notifications: TypedEventEmitter<EventsToEmitterHandlers<Events>>;
-    /** Don't forget to call this asyncronous method before doing your thing */
+    notifications: EventEmitter;
+    /** Don't forget to call this asynchronous method before doing your thing */
     connect(): Promise<void>;
     close(): Promise<void>;
     getSubscribedChannels(): Array<string>;
@@ -201,7 +163,7 @@ export interface Subscriber<Events extends Record<string, any> = { [channel: str
 
 function createPostgresSubscriber<Events extends Record<string, any> = { [channel: string]: any }> (
   connectionConfig?: pg.ClientConfig,
-  options: Options = {}
+  options: WPgOptionsType = {}
 ): Subscriber<Events> {
   const {
     paranoidChecking = 30000,
@@ -212,22 +174,22 @@ function createPostgresSubscriber<Events extends Record<string, any> = { [channe
   const emitter = new EventEmitter() as TypedEventEmitter<PgListenEvents>;
   emitter.setMaxListeners(0);    // Unlimited listeners
 
-  const notificationsEmitter = new EventEmitter() as TypedEventEmitter<EventsToEmitterHandlers<Events>>;
+  const notificationsEmitter = new EventEmitter();
   notificationsEmitter.setMaxListeners(0);   // Unlimited listeners
 
   emitter.on('notification', (notification: PgParsedNotification) => {
-    notificationsEmitter.emit<any>(notification.channel, notification.payload);
+    notificationsEmitter.emit(notification.channel, notification.payload);
   });
 
-  const { dbClient: initialDBClient, reconnect } = connect(connectionConfig, emitter, options);
+  const { dbClient: initialDBClient, reconnect } = connect(connectionConfig, options);
 
-  let closing = false;
+  let closing: boolean = false;
   let dbClient = initialDBClient;
   let reinitializingRightNow = false;
   let subscribedChannels: Set<string> = new Set();
 
-  let cancelEventForwarding: () => void = () => undefined;
-  let cancelParanoidChecking: () => void = () => undefined;
+  let cancelEventForwarding: () => WNothingType = () => wNothing;
+  let cancelParanoidChecking: () => WNothingType = () => wNothing;
 
   const initialize = (client: pg.Client) => {
     // Wire the DB client events to our exposed emitter's events
@@ -298,7 +260,7 @@ function createPostgresSubscriber<Events extends Record<string, any> = { [channe
     /** For convenience: Subscribe to distinct notifications here, event name = channel name */
     notifications: notificationsEmitter,
 
-    /** Don't forget to call this asyncronous method before doing your thing */
+    /** Don't forget to call this asynchronous method before doing your thing */
     async connect () {
       initialize(dbClient);
       await dbClient.connect();
