@@ -23,13 +23,11 @@
     "pg": "7.x || 8.x"
   },
   "dependencies": {
-    "debug": "^4.3.4",
     "pg-format": "^1.0.4",
     "pg": "^8.11.0",
     "typed-emitter": "^0.1.0"
   },
   "devDependencies": {
-    "@types/debug": "^4.1.8",
     "@types/jest": "^29.5.1",
     "@types/node": "^20.2.5",
     "@types/pg": "^8.10.2",
