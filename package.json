@@ -1,16 +1,14 @@
 {
   "name": "pg-listen",
-  "version": "1.7.0",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "PostgreSQL LISTEN &  NOTIFY that finally works.",
-  "author": "Andy Wermke (https://github.com/andywer)",
-  "repository": "github:andywer/pg-listen",
-  "main": "./index.js",
+  "exports": "./dist/index.js",
   "typings": "./dist/index.d.ts",
   "scripts": {
     "build": "rm -rf dist/ && tsc -p tsconfig-build.json",
-    "test": "ava test/*.test.ts",
-    "test:database": "docker run -e POSTGRES_DB=postgres -e POSTGRES_PASSWORD=postgres -p 5432:5432 --rm postgres:10.4-alpine"
+    "test": "ava sources/test/*.test.ts",
+    "test:database": "docker run -e POSTGRES_DB=postgres -e POSTGRES_PASSWORD=postgres -p 5433:5432 --rm postgres:10.4-alpine"
   },
   "keywords": [
     "postgres",

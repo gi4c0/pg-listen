@@ -42,6 +42,12 @@ module.exports = {
     'no-trailing-spaces': 'error',
     'no-shadow': 'off',
     '@typescript-eslint/no-shadow': 'error',
+    '@typescript-eslint/no-inferrable-types': 'off',
+    '@typescript-eslint/typedef': ['error', {
+      'variableDeclaration': true,
+      'variableDeclarationIgnoreFunction': true,
+      'parameter': true
+    }],
     'no-eval': 'error',
     'no-debugger': 'error',
     '@typescript-eslint/no-empty-interface': 'error',
@@ -100,7 +106,6 @@ module.exports = {
     'no-extra-boolean-cast': 'off',
     'quotes': ['error', 'single', { 'avoidEscape': true, 'allowTemplateLiterals': true }],
     '@typescript-eslint/no-explicit-any': 'off',
-    '@typescript-eslint/no-inferrable-types': 'off',
     '@typescript-eslint/array-type': ['error', { 'default': 'generic', 'readonly': 'generic' }],
     'indent': [
       'error',
