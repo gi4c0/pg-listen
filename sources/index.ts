@@ -1,164 +1,265 @@
 import * as pg from 'pg';
-import { WAsyncThrowableType, wNothing, WNothingType } from '@w-utility';
-import { EventEmitter } from 'events';
 import * as format from 'pg-format';
+import { EventEmitter } from 'events';
+import { WPgNotificationType, WPgOptionsType } from './types';
 import TypedEventEmitter from 'typed-emitter';
-import { WPgOptionsType, WPgNotificationType } from './types';
-import { clientCreator } from './fn/client-creator';
 import { WPgListenEventsType } from './types/pg/w-pg-listen-events.type';
+import { WAsyncThrowableType, wNothing, WNothingType } from '@w-utility';
 import { forwardDBNotificationEvents } from './fn/forward-db-notification-events';
 import { scheduleParanoidChecking } from './fn/schedule-paranoid-checker';
-import { WPgSubscriberType } from './types/w-pg-subscriber.type';
+import { wPgReconnect } from './fn/w-pg-reconnect';
 
-export default function createPostgresSubscriber<Events extends Record<string, any>> (
-  connectionConfig?: pg.ClientConfig,
-  options: WPgOptionsType = {}
-): WPgSubscriberType<Events> {
-  const {
-    paranoidChecking = 30000,
-    parse = JSON.parse,
-    serialize = JSON.stringify
-  } = options;
+export class WPgListener {
+  /**
+   * DB Client
+   */
+  private dbClient: pg.Client;
 
-  const emitter: TypedEventEmitter<WPgListenEventsType> = new EventEmitter() as TypedEventEmitter<WPgListenEventsType>;
-  emitter.setMaxListeners(0);    // Unlimited listeners
+  /**
+   * Channels given by user to subscribe
+   */
+  private subscribedChannels: Set<string> = new Set<string>();
 
-  const notificationsEmitter: EventEmitter = new EventEmitter();
-  notificationsEmitter.setMaxListeners(0);   // Unlimited listeners
+  /**
+   * Indicates if user is closing connection right now
+   */
+  private isClosing: boolean = false;
 
-  emitter.on('notification', (notification: WPgNotificationType): WNothingType => {
-    notificationsEmitter.emit(notification.channel, notification.payload);
+  /**
+   * Indicates connection is reinitializing right now
+   */
+  private isReinitializing: boolean = false;
+
+  /**
+   * PG Client config
+   */
+  private connectionConfig: pg.ClientConfig;
+
+  /**
+   * Options
+   */
+  private options: Required<WPgOptionsType>;
+
+  /**
+   * Our internal event emitter
+   */
+  private emitter: TypedEventEmitter<WPgListenEventsType> = new EventEmitter() as TypedEventEmitter<WPgListenEventsType>;
+
+  /**
+   * Event emitter for notifications
+   */
+  private notificationsEmitter: EventEmitter = new EventEmitter();
+
+  /**
+   * Cancels event forwarding for this.emitter. Needed for reinitialization. Will be assigned later.
+   */
+  private cancelEventForwarding: () => WNothingType = () => wNothing;
+
+  /**
+   * Cancels (setInterval) paranoid checking. Needed for reinitialization. Will be assigned later.
+   */
+  private cancelParanoidChecking: () => WNothingType = () => wNothing;
+
+  public constructor(connectionConfig?: pg.ClientConfig, options: Partial<WPgOptionsType> = {}) {
+    this.connectionConfig = connectionConfig || {};
+    this.options = {
+      paranoidChecking: options.paranoidChecking || 3000,
+      parse: options.parse || JSON.parse,
+      serialize: options.serialize || JSON.stringify,
+      native: options.native || false,
+      retryInterval: options.retryInterval || 500,
+      retryLimit: options.retryLimit || Infinity,
+      retryTimeout: options.retryTimeout || 3000
+    };
+
+    this.emitter.setMaxListeners(0);
+    this.notificationsEmitter.setMaxListeners(0);
+
+    this.emitter.on('notification', (notification: WPgNotificationType): WNothingType => {
+      this.notificationsEmitter.emit(notification.channel, notification.payload);
+      return;
+    });
+
+    this.dbClient = this.createClient();
+  }
+
+  /**
+   * Getter for events emitter
+   */
+  public get events(): TypedEventEmitter<WPgListenEventsType> {
+    return this.emitter;
+  }
+
+  /**
+   * Getter for events notification emitter
+   */
+  public get notifications(): EventEmitter {
+    return this.notificationsEmitter;
+  }
+
+  /**
+   * Connects to DB
+   */
+  public async connect(): WAsyncThrowableType<WNothingType> {
+    this.initialize();
+    await this.dbClient.connect();
+
+    this.emitter.emit('connected');
     return;
-  });
+  }
 
-  const { dbClient: initialDBClient, reconnect } = clientCreator(connectionConfig, options);
+  /**
+   * Closes connection to DB
+   */
+  public async close(): WAsyncThrowableType<WNothingType> {
+    this.isClosing = true;
+    this.cancelParanoidChecking();
 
-  let closing: boolean = false;
-  let dbClient: pg.Client = initialDBClient;
-  let reinitializingRightNow: boolean = false;
-  let subscribedChannels: Set<string> = new Set();
+    await this.dbClient.end();
+    return;
+  }
 
-  let cancelEventForwarding: () => WNothingType = () => wNothing;
-  let cancelParanoidChecking: () => WNothingType = () => wNothing;
+  /**
+   * Retrieves subscribed channels
+   */
+  public getSubscribedChannels(): ReadonlyArray<string> {
+    return Array.from(this.subscribedChannels);
+  }
 
-  function initialize(client: pg.Client): WNothingType {
+  /**
+   * Subscribe to channel
+   */
+  public async listenTo(channelName: string): WAsyncThrowableType<WNothingType> {
+    if (this.subscribedChannels.has(channelName)) {
+      return;
+    }
+
+    this.subscribedChannels.add(channelName);
+
+    return this.dbClient
+      .query(`LISTEN ${format.ident(channelName)}`)
+      .then<WNothingType>(() => wNothing);
+  }
+
+  /**
+   * Send notification
+   */
+  public notify(channelName: string, payload?: any): Promise<pg.QueryResult> {
+    const serializedPayload: string = (
+      payload !== wNothing
+        ? `, ${format.literal(this.options.serialize(payload))}`
+        : ''
+    );
+
+    return this.dbClient.query(`NOTIFY ${format.ident(channelName)}${serializedPayload}`);
+  }
+
+  /**
+   * Unsubscribe from channel
+   */
+  public async unlisten(channelName: string): WAsyncThrowableType<WNothingType> {
+    if (!this.subscribedChannels.has(channelName)) {
+      return;
+    }
+
+    this.subscribedChannels.delete(channelName);
+
+    return this.dbClient
+      .query(`UNLISTEN ${format.ident(channelName)}`)
+      .then<WNothingType>(() => wNothing);
+  }
+
+  /**
+   * Unsubscribe from all existing channels
+   */
+  public unlistenAll(): WAsyncThrowableType<pg.QueryResult> {
+    this.subscribedChannels = new Set();
+    return this.dbClient.query(`UNLISTEN *`);
+  }
+  /**
+   * Initializes notifications forwarding to our listeners and listen for errors from dbClient
+   */
+  private initialize(): WNothingType {
     // Wire the DB client events to our exposed emitter's events
-    cancelEventForwarding = forwardDBNotificationEvents(client, emitter, parse);
+    this.cancelEventForwarding = forwardDBNotificationEvents(this.dbClient, this.emitter, this.options.parse);
 
-    dbClient.on('error', (_error: any): WNothingType => {
-      if (!reinitializingRightNow) {
-        reinitialize();
-      }
-      return;
-    });
+    this.dbClient.on('error', this.dbClientErrorHandler);
+    this.dbClient.on('end', this.dbClientErrorHandler);
 
-    dbClient.on('end', (): WNothingType => {
-      if (!reinitializingRightNow) {
-        reinitialize();
-      }
-      return;
-    });
-
-    if (paranoidChecking) {
-      cancelParanoidChecking = scheduleParanoidChecking(client, paranoidChecking, reinitialize);
+    if (this.options.paranoidChecking) {
+      this.cancelParanoidChecking = scheduleParanoidChecking(
+        this.dbClient,
+        this.options.paranoidChecking,
+        this.reinitialize
+      );
     }
 
     return;
   }
 
-  // No need to handle errors when calling `reinitialize()`, it handles its errors itself
-  async function reinitialize(): Promise<WNothingType> {
-    if (reinitializingRightNow || closing) {
+  /**
+   * Handler for dbClient 'error' or 'end' event
+   */
+  private dbClientErrorHandler(): WNothingType {
+    if (!this.isReinitializing) {
+      this.reinitialize();
+    }
+    return;
+  }
+
+  /**
+   * Re-initializes the connection (e.g. if error occured)
+   */
+  private async reinitialize(): WAsyncThrowableType<WNothingType> {
+    if (this.isReinitializing || this.isClosing) {
       return;
     }
-    reinitializingRightNow = true;
+
+    this.isReinitializing = true;
 
     try {
-      cancelParanoidChecking();
-      cancelEventForwarding();
+      this.cancelParanoidChecking();
+      this.cancelEventForwarding();
 
-      dbClient.removeAllListeners();
-      dbClient.end();
+      this.dbClient.removeAllListeners();
+      this.dbClient.end();
 
-      dbClient = await reconnect((attempt: number): boolean => emitter.emit('reconnect', attempt));
-      initialize(dbClient);
+      this.dbClient = await wPgReconnect(
+        this.connectionConfig,
+        this.options,
+        (attempt: number): boolean => this.emitter.emit('reconnect', attempt)
+      );
 
-      const subscribedChannelsArray = Array.from(subscribedChannels);
+      this.initialize();
 
-      await Promise.all(subscribedChannelsArray.map<Promise<WNothingType>>(
-        (channelName: string) => dbClient
-          .query(`LISTEN ${format.ident(channelName)}`)
-          .then<WNothingType>(() => wNothing)
-      ));
+      const subscribedChannelsArray = Array.from(this.subscribedChannels);
 
-      emitter.emit('connected');
-    } catch (error) {
+      await Promise.all(
+        subscribedChannelsArray.map<Promise<WNothingType>>(
+          (channelName: string) => this.dbClient
+            .query(`LISTEN ${format.ident(channelName)}`)
+            .then<WNothingType>(() => wNothing)
+        )
+      );
+
+      this.emitter.emit('connected');
+    } catch (error) { // TODO: Use our errors
       error.message = `Re-initializing the PostgreSQL notification client after connection loss failed: ${error.message}`;
-      emitter.emit('error', error);
+      this.emitter.emit('error', error);
     } finally {
-      reinitializingRightNow = false;
+      this.isReinitializing = false;
     }
+
     return;
   }
 
-  return {
-    /** Emits events: "error", "notification" & "redirect" */
-    events: emitter,
+  /**
+    * Creates new client
+  */
+  private createClient(): pg.Client {
+    const effectiveConnectionConfig: pg.ClientConfig = { ...this.connectionConfig, keepAlive: true };
+    const Client = this.options.native && pg.native ? pg.native.Client : pg.Client;
 
-    /** For convenience: Subscribe to distinct notifications here, event name = channel name */
-    notifications: notificationsEmitter,
-
-    /** Don't forget to call this asynchronous method before doing your thing */
-    async connect() {
-      initialize(dbClient);
-      await dbClient.connect();
-      emitter.emit('connected');
-    },
-
-    close(): Promise<void> {
-      closing = true;
-      cancelParanoidChecking();
-      return dbClient.end();
-    },
-
-    getSubscribedChannels(): ReadonlyArray<string> {
-      return Array.from(subscribedChannels);
-    },
-
-    async listenTo(channelName: string): WAsyncThrowableType<WNothingType> {
-      if (subscribedChannels.has(channelName)) {
-        return;
-      }
-
-      subscribedChannels.add(channelName);
-
-      return dbClient
-        .query(`LISTEN ${format.ident(channelName)}`)
-        .then<WNothingType>(() => wNothing);
-    },
-
-    notify(channelName: string, payload?: any): Promise<pg.QueryResult> {
-      const serializedPayload: string = (
-        payload !== wNothing
-          ? `, ${format.literal(serialize(payload))}`
-          : ''
-      );
-
-      return dbClient.query(`NOTIFY ${format.ident(channelName)}${serializedPayload}`);
-    },
-
-    unlisten(channelName: string) {
-      if (!subscribedChannels.has(channelName)) {
-        return;
-      }
-
-      subscribedChannels.delete(channelName);
-      return dbClient.query(`UNLISTEN ${format.ident(channelName)}`);
-    },
-
-    unlistenAll() {
-      subscribedChannels = new Set();
-      return dbClient.query(`UNLISTEN *`);
-    }
-  };
+    return new Client(effectiveConnectionConfig);
+  }
 }

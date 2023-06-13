@@ -45,25 +45,27 @@ module.exports = {
     'no-console': ['error', { 'allow': ['error', 'log'] }],
     'no-multiple-empty-lines': ['error', { max: 1 }],
     'no-new-wrappers': 'error',
-    '@typescript-eslint/member-ordering': [
-      'error',
-      {
-        'default': [
-          'public-static-field',
-          'protected-static-field',
-          'private-static-field',
-          'public-static-method',
-          'protected-static-method',
-          'private-static-method',
-          'public-instance-field',
-          'protected-instance-field',
-          'private-instance-field',
-          'public-instance-method',
-          'protected-instance-method',
-          'private-instance-method'
-        ]
-      }
-    ],
+    /*
+     * '@typescript-eslint/member-ordering': [
+     *   'error',
+     *   {
+     *     'default': [
+     *       'public-static-field',
+     *       'protected-static-field',
+     *       'private-static-field',
+     *       'public-static-method',
+     *       'protected-static-method',
+     *       'private-static-method',
+     *       'public-instance-field',
+     *       'protected-instance-field',
+     *       'private-instance-field',
+     *       'public-instance-method',
+     *       'protected-instance-method',
+     *       'private-instance-method'
+     *     ]
+     *   }
+     * ],
+     */
     '@typescript-eslint/explicit-member-accessibility': ['error', 'always'],
     'no-labels': ['error', { 'allowLoop': true }],
     'object-curly-spacing': ['error', 'always'],
