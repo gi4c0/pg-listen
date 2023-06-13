@@ -3,7 +3,7 @@ import { WMaybeType, WAsyncThrowableType, wErrorCreator } from '@w-utility';
 import { delay } from '../helpers/delay.helper';
 import { WPgOptionsType, WPgConnectResultType, WPgReconnectFunctionType } from '../types';
 
-export function connect(
+export function clientCreator(
   connectionConfig: WMaybeType<pg.ClientConfig>,
   options: WPgOptionsType
 ): WPgConnectResultType {

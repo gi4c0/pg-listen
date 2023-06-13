@@ -1,10 +1,10 @@
 import * as pg from 'pg';
-import { wNothing, WNothingType } from '@w-utility';
+import { WAsyncThrowableType, wNothing, WNothingType } from '@w-utility';
 import { EventEmitter } from 'events';
 import * as format from 'pg-format';
 import TypedEventEmitter from 'typed-emitter';
 import { WPgOptionsType, WPgNotificationType } from './types';
-import { connect } from './fn/connect';
+import { clientCreator } from './fn/client-creator';
 import { WPgListenEventsType } from './types/pg/w-pg-listen-events.type';
 import { forwardDBNotificationEvents } from './fn/forward-db-notification-events';
 import { scheduleParanoidChecking } from './fn/schedule-paranoid-checker';
@@ -26,11 +26,12 @@ export default function createPostgresSubscriber<Events extends Record<string, a
   const notificationsEmitter: EventEmitter = new EventEmitter();
   notificationsEmitter.setMaxListeners(0);   // Unlimited listeners
 
-  emitter.on('notification', (notification: WPgNotificationType) => {
+  emitter.on('notification', (notification: WPgNotificationType): WNothingType => {
     notificationsEmitter.emit(notification.channel, notification.payload);
+    return;
   });
 
-  const { dbClient: initialDBClient, reconnect } = connect(connectionConfig, options);
+  const { dbClient: initialDBClient, reconnect } = clientCreator(connectionConfig, options);
 
   let closing: boolean = false;
   let dbClient: pg.Client = initialDBClient;
@@ -84,8 +85,10 @@ export default function createPostgresSubscriber<Events extends Record<string, a
 
       const subscribedChannelsArray = Array.from(subscribedChannels);
 
-      await Promise.all(subscribedChannelsArray.map(
-        channelName => dbClient.query(`LISTEN ${format.ident(channelName)}`)
+      await Promise.all(subscribedChannelsArray.map<Promise<WNothingType>>(
+        (channelName: string) => dbClient
+          .query(`LISTEN ${format.ident(channelName)}`)
+          .then<WNothingType>(() => wNothing)
       ));
 
       emitter.emit('connected');
@@ -106,36 +109,45 @@ export default function createPostgresSubscriber<Events extends Record<string, a
     notifications: notificationsEmitter,
 
     /** Don't forget to call this asynchronous method before doing your thing */
-    async connect () {
+    async connect() {
       initialize(dbClient);
       await dbClient.connect();
       emitter.emit('connected');
     },
-    close () {
+
+    close(): Promise<void> {
       closing = true;
       cancelParanoidChecking();
       return dbClient.end();
     },
-    getSubscribedChannels () {
+
+    getSubscribedChannels(): ReadonlyArray<string> {
       return Array.from(subscribedChannels);
     },
-    listenTo (channelName: string) {
+
+    async listenTo(channelName: string): WAsyncThrowableType<WNothingType> {
       if (subscribedChannels.has(channelName)) {
         return;
       }
 
       subscribedChannels.add(channelName);
-      return dbClient.query(`LISTEN ${format.ident(channelName)}`);
+
+      return dbClient
+        .query(`LISTEN ${format.ident(channelName)}`)
+        .then<WNothingType>(() => wNothing);
     },
-    notify (channelName: string, payload?: any) {
-      if (payload !== undefined) {
-        const serialized = serialize(payload);
-        return dbClient.query(`NOTIFY ${format.ident(channelName)}, ${format.literal(serialized)}`);
-      } else {
-        return dbClient.query(`NOTIFY ${format.ident(channelName)}`);
-      }
+
+    notify(channelName: string, payload?: any): Promise<pg.QueryResult> {
+      const serializedPayload: string = (
+        payload !== wNothing
+          ? `, ${format.literal(serialize(payload))}`
+          : ''
+      );
+
+      return dbClient.query(`NOTIFY ${format.ident(channelName)}${serializedPayload}`);
     },
-    unlisten (channelName: string) {
+
+    unlisten(channelName: string) {
       if (!subscribedChannels.has(channelName)) {
         return;
       }
@@ -143,7 +155,8 @@ export default function createPostgresSubscriber<Events extends Record<string, a
       subscribedChannels.delete(channelName);
       return dbClient.query(`UNLISTEN ${format.ident(channelName)}`);
     },
-    unlistenAll () {
+
+    unlistenAll() {
       subscribedChannels = new Set();
       return dbClient.query(`UNLISTEN *`);
     }
