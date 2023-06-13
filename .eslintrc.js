@@ -33,6 +33,11 @@ module.exports = {
      */
     'no-undef-init': 'error',
     'no-unused-expressions': 'error',
+    'space-before-function-paren': ['error', {
+      anonymous: 'never',
+      named: 'never',
+      asyncArrow: 'always'
+    }],
     'no-throw-literal': 'error',
     'no-trailing-spaces': 'error',
     'no-shadow': 'off',

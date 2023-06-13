@@ -9,7 +9,7 @@ export function scheduleParanoidChecking(
   const scheduledCheck = async () => {
     try {
       await dbClient.query('SELECT pg_backend_pid()');
-    } catch (error) {
+    } catch (err) {
       await reconnect();
     }
   };

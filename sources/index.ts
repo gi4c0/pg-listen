@@ -4,10 +4,11 @@ import { EventEmitter } from 'events';
 import { WPgNotificationType, WPgOptionsType } from './types';
 import TypedEventEmitter from 'typed-emitter';
 import { WPgListenEventsType } from './types/pg/w-pg-listen-events.type';
-import { WAsyncThrowableType, wNothing, WNothingType } from '@w-utility';
+import { WAsyncThrowableType, wErrorCreator, wNothing, WNothingType } from '@w-utility';
 import { forwardDBNotificationEvents } from './fn/forward-db-notification-events';
 import { scheduleParanoidChecking } from './fn/schedule-paranoid-checker';
 import { wPgReconnect } from './fn/w-pg-reconnect';
+import { WReturnNothingFuncType } from './types/util/w-return-nothing-func.type';
 
 export class WPgListener {
   /**
@@ -53,12 +54,12 @@ export class WPgListener {
   /**
    * Cancels event forwarding for this.emitter. Needed for reinitialization. Will be assigned later.
    */
-  private cancelEventForwarding: () => WNothingType = () => wNothing;
+  private cancelEventForwarding: WReturnNothingFuncType = () => wNothing;
 
   /**
    * Cancels (setInterval) paranoid checking. Needed for reinitialization. Will be assigned later.
    */
-  private cancelParanoidChecking: () => WNothingType = () => wNothing;
+  private cancelParanoidChecking: WReturnNothingFuncType = () => wNothing;
 
   public constructor(connectionConfig?: pg.ClientConfig, options: Partial<WPgOptionsType> = {}) {
     this.connectionConfig = connectionConfig || {};
@@ -176,15 +177,20 @@ export class WPgListener {
     this.subscribedChannels = new Set();
     return this.dbClient.query(`UNLISTEN *`);
   }
+
   /**
    * Initializes notifications forwarding to our listeners and listen for errors from dbClient
    */
   private initialize(): WNothingType {
     // Wire the DB client events to our exposed emitter's events
-    this.cancelEventForwarding = forwardDBNotificationEvents(this.dbClient, this.emitter, this.options.parse);
+    this.cancelEventForwarding = forwardDBNotificationEvents(
+      this.dbClient,
+      this.emitter,
+      this.options.parse
+    );
 
-    this.dbClient.on('error', this.dbClientErrorHandler);
-    this.dbClient.on('end', this.dbClientErrorHandler);
+    this.dbClient.on('error', this.onDBClientErrorHandler);
+    this.dbClient.on('end', this.onDBClientErrorHandler);
 
     if (this.options.paranoidChecking) {
       this.cancelParanoidChecking = scheduleParanoidChecking(
@@ -200,7 +206,7 @@ export class WPgListener {
   /**
    * Handler for dbClient 'error' or 'end' event
    */
-  private dbClientErrorHandler(): WNothingType {
+  private onDBClientErrorHandler(): WNothingType {
     if (!this.isReinitializing) {
       this.reinitialize();
     }
@@ -243,9 +249,11 @@ export class WPgListener {
       );
 
       this.emitter.emit('connected');
-    } catch (error) { // TODO: Use our errors
-      error.message = `Re-initializing the PostgreSQL notification client after connection loss failed: ${error.message}`;
-      this.emitter.emit('error', error);
+    } catch (originalError) {
+      this.emitter.emit(
+        'error',
+        wErrorCreator(`Re-initializing the PostgreSQL notification client after connection loss failed: ${originalError.message}`)
+      );
     } finally {
       this.isReinitializing = false;
     }
@@ -254,8 +262,8 @@ export class WPgListener {
   }
 
   /**
-    * Creates new client
-  */
+   * Creates new client
+   */
   private createClient(): pg.Client {
     const effectiveConnectionConfig: pg.ClientConfig = { ...this.connectionConfig, keepAlive: true };
     const Client = this.options.native && pg.native ? pg.native.Client : pg.Client;

@@ -27,6 +27,7 @@ export declare class WPgListener {
     unlisten(channelName: string): WAsyncThrowableType<WNothingType>;
     unlistenAll(): WAsyncThrowableType<pg.QueryResult>;
     private initialize;
+    private onDBClientErrorHandler;
     private reinitialize;
     private createClient;
 }
