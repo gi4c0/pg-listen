@@ -10,7 +10,7 @@ export async function wPgReconnect(
 ): WAsyncThrowableType<pg.Client> {
   const effectiveConnectionConfig: pg.ClientConfig = { ...connectionConfig, keepAlive: true };
 
-  const Client = options.native && pg.native ? pg.native.Client : pg.Client;
+  const Client: typeof pg.Client = options.native && pg.native ? pg.native.Client : pg.Client;
 
   const getRetryInterval: (attempt: number) => number = (
     typeof options.retryInterval === 'function'
@@ -20,7 +20,7 @@ export async function wPgReconnect(
 
   const startTime: number = Date.now();
 
-  for (let attempt = 1; attempt < options.retryLimit || !options.retryLimit; attempt++) {
+  for (let attempt: number = 1; attempt < options.retryLimit || !options.retryLimit; attempt++) {
     onAttempt(attempt);
 
     try {

@@ -196,7 +196,7 @@ export class WPgListener {
       this.cancelParanoidChecking = scheduleParanoidChecking(
         this.dbClient,
         this.options.paranoidChecking,
-        this.reinitialize
+        this.reinitialize.bind(this)
       );
     }
 
@@ -238,7 +238,7 @@ export class WPgListener {
 
       this.initialize();
 
-      const subscribedChannelsArray = Array.from(this.subscribedChannels);
+      const subscribedChannelsArray: ReadonlyArray<string> = Array.from(this.subscribedChannels);
 
       await Promise.all(
         subscribedChannelsArray.map<Promise<WNothingType>>(
@@ -266,7 +266,7 @@ export class WPgListener {
    */
   private createClient(): pg.Client {
     const effectiveConnectionConfig: pg.ClientConfig = { ...this.connectionConfig, keepAlive: true };
-    const Client = this.options.native && pg.native ? pg.native.Client : pg.Client;
+    const Client: typeof pg.Client = this.options.native && pg.native ? pg.native.Client : pg.Client;
 
     return new Client(effectiveConnectionConfig);
   }

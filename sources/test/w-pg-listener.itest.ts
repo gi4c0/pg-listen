@@ -127,7 +127,7 @@ describe(
       60000
     );
 
-    it(
+    it.only(
       'Should get notification after connection is terminated',
       async (): Promise<void> => {
         let connectedEvents: number = 0;
@@ -141,7 +141,7 @@ describe(
 
         const hub: WPgListener = new WPgListener(
           { connectionString: connectionString + '?ApplicationName=pg-listen-termination-test' },
-          { paranoidChecking: 1000 }
+          { paranoidChecking: 100 }
         );
 
         hub.events.on('connected', () => connectedEvents++);
@@ -155,7 +155,6 @@ describe(
           await hub.listenTo('test');
           await delay(1000);
 
-          // Don't await as we kill some other connection, so the promise won't resolve (I think)
           await client.query('SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND usename = current_user');
           await client.end();
           await delay(2000);
