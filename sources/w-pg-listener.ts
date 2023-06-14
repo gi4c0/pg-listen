@@ -189,8 +189,8 @@ export class WPgListener {
       this.options.parse
     );
 
-    this.dbClient.on('error', this.onDBClientErrorHandler);
-    this.dbClient.on('end', this.onDBClientErrorHandler);
+    this.dbClient.on('error', this.onDBClientErrorHandler.bind(this));
+    this.dbClient.on('end', this.onDBClientErrorHandler.bind(this));
 
     if (this.options.paranoidChecking) {
       this.cancelParanoidChecking = scheduleParanoidChecking(
