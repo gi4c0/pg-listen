@@ -1,12 +1,12 @@
 {
-  "name": "pg-listen",
+  "name": "@w/pg-listen",
   "version": "1.0.0",
   "license": "MIT",
   "description": "PostgreSQL LISTEN &  NOTIFY that finally works.",
   "exports": "./dist/index.js",
   "typings": "./dist/index.d.ts",
   "scripts": {
-    "build": "rm -rf dist/ && tsc -p tsconfig-build.json",
+    "build": "rm -rf dist/ pg-listen-1.0.0.tgz/ && tsc -p tsconfig-build.json && npm pack --pack-destination ./",
     "test": "NODE_OPTIONS=--max-old-space-size=4096 STATIC_SECRET=qwerty node --inspect -r ts-node/register node_modules/.bin/jest -c jest-integration-test.config.js --no-cache --runInBand",
     "test:database": "docker run -e POSTGRES_DB=postgres -e POSTGRES_PASSWORD=postgres -p 5433:5432 --rm postgres:10.4-alpine"
   },
@@ -21,6 +21,7 @@
     "pg": "8.11.x"
   },
   "dependencies": {
+    "@w/utility": "file:../w-utility/w-utility-1.0.0.tgz",
     "pg": "8.11.x",
     "pg-format": "^1.0.4",
     "typed-emitter": "^0.1.0"

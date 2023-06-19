@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import { WPgOptionsType } from './types';
 import TypedEventEmitter from 'typed-emitter';
 import { WPgListenEventsType } from './types/pg/w-pg-listen-events.type';
-import { WAsyncThrowableType, WNothingType } from '@w-utility';
+import { WAsyncThrowableType, WNothingType } from '@w/utility';
 export declare class WPgListener {
     private dbClient;
     private subscribedChannels;

@@ -1,3 +1,3 @@
-import { WNothingType } from '@w-utility';
+import { WNothingType } from '@w/utility';
 
 export type WReturnNothingFuncType = () => WNothingType;

@@ -1,5 +1,5 @@
 import * as pg from 'pg';
-import { WAsyncThrowableType, wErrorCreator } from '@w-utility';
+import { WAsyncThrowableType, wErrorCreator } from '@w/utility';
 import { delay } from '../helpers/delay.helper';
 import { WPgOptionsType } from '../types';
 

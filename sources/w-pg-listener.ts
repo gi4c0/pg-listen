@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import { WPgNotificationType, WPgOptionsType } from './types';
 import TypedEventEmitter from 'typed-emitter';
 import { WPgListenEventsType } from './types/pg/w-pg-listen-events.type';
-import { WAsyncThrowableType, wErrorCreator, wNothing, WNothingType } from '@w-utility';
+import { WAsyncThrowableType, wErrorCreator, wNothing, WNothingType } from '@w/utility';
 import { forwardDBNotificationEvents } from './fn/forward-db-notification-events';
 import { scheduleParanoidChecking } from './fn/schedule-paranoid-checker';
 import { wPgReconnect } from './fn/w-pg-reconnect';

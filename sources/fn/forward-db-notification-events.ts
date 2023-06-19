@@ -1,4 +1,4 @@
-import { wNothing, WNothingType } from '@w-utility';
+import { wNothing, WNothingType } from '@w/utility';
 import * as pg from 'pg';
 import TypedEventEmitter from 'typed-emitter';
 import { WPgNotificationType } from '../types';

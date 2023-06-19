@@ -1,4 +1,4 @@
-import { wNothing } from '@w-utility';
+import { wNothing } from '@w/utility';
 
 // Need to require `pg` like this to avoid ugly error message
 import * as pg from 'pg';

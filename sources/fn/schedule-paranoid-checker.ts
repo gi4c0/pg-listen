@@ -1,4 +1,4 @@
-import { WNothingType } from '@w-utility/dist';
+import { WNothingType } from '@w/utility';
 import * as pg from 'pg';
 
 export function scheduleParanoidChecking(
