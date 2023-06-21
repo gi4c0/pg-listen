@@ -1,5 +1,5 @@
 import * as pg from 'pg';
-import { WPgReconnectFunctionType } from './w-pg-reconnect-function.type';
+import { WPgListenReconnectFnType } from './w-pg-listen-reconnect-fn.type';
 
 export type WPgConnectResultType = Readonly<{
   /**
@@ -10,5 +10,5 @@ export type WPgConnectResultType = Readonly<{
   /**
    * Reconnect function
    */
-  reconnect: WPgReconnectFunctionType;
+  reconnect: WPgListenReconnectFnType;
 }>;

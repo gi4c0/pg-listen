@@ -1,7 +1,7 @@
-import { WNothingType } from '@w/utility';
 import * as pg from 'pg';
+import { WNothingType } from '@w/utility';
 
-export function scheduleParanoidChecking(
+export function wPgListenParanoidCheckScheduler(
   dbClient: pg.Client,
   intervalTime: number,
   reconnect: () => Promise<void>

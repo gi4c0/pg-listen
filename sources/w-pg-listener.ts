@@ -1,16 +1,27 @@
 import * as pg from 'pg';
-import * as format from 'pg-format';
+import * as pgFormat from 'pg-format';
 import { EventEmitter } from 'events';
-import { WPgNotificationType, WPgOptionsType } from './types';
 import TypedEventEmitter from 'typed-emitter';
-import { WPgListenEventsType } from './types/pg/w-pg-listen-events.type';
 import { WAsyncThrowableType, wErrorCreator, wNothing, WNothingType } from '@w/utility';
-import { forwardDBNotificationEvents } from './fn/forward-db-notification-events';
-import { scheduleParanoidChecking } from './fn/schedule-paranoid-checker';
-import { wPgReconnect } from './fn/w-pg-reconnect';
-import { WReturnNothingFuncType } from './types/util/w-return-nothing-func.type';
+import { wPgListenerCreator, wPgListenParanoidCheckScheduler, wPgListenReconnecter } from './fn';
+import { WPgListenEventsType, WPgNotificationType, WPgOptionsType } from './type';
 
 export class WPgListener {
+  /**
+   * Method creates options for the PG with default values for properties, omitted by user
+   */
+  private static createOptions(options: Partial<WPgOptionsType> = {}): WPgOptionsType {
+    return {
+      paranoidChecking: options.paranoidChecking || 3000,
+      parse: options.parse || JSON.parse,
+      serialize: options.serialize || JSON.stringify,
+      native: options.native || false,
+      retryInterval: options.retryInterval || 500,
+      retryLimit: options.retryLimit || Infinity,
+      retryTimeout: options.retryTimeout || 3000
+    };
+  }
+
   /**
    * DB Client
    */
@@ -19,7 +30,7 @@ export class WPgListener {
   /**
    * Channels given by user to subscribe
    */
-  private subscribedChannels: Set<string> = new Set<string>();
+  private readonly subscribedChannels: Set<string> = new Set<string>();
 
   /**
    * Indicates if user is closing connection right now
@@ -34,52 +45,47 @@ export class WPgListener {
   /**
    * PG Client config
    */
-  private connectionConfig: pg.ClientConfig;
+  private readonly connectionConfig: pg.ClientConfig;
 
   /**
    * Options
    */
-  private options: WPgOptionsType;
+  private readonly options: WPgOptionsType;
 
   /**
    * Our internal event emitter
    */
-  private emitter: TypedEventEmitter<WPgListenEventsType> = new EventEmitter() as TypedEventEmitter<WPgListenEventsType>;
+  private readonly emitter: TypedEventEmitter<WPgListenEventsType> = new EventEmitter() as TypedEventEmitter<WPgListenEventsType>;
 
   /**
    * Event emitter for notifications
    */
-  private notificationsEmitter: EventEmitter = new EventEmitter();
+  private readonly notificationsEmitter: EventEmitter = new EventEmitter();
 
   /**
    * Cancels event forwarding for this.emitter. Needed for reinitialization. Will be assigned later.
    */
-  private cancelEventForwarding: WReturnNothingFuncType = () => wNothing;
+  private cancelEventForwarding: () => WNothingType = () => wNothing;
 
   /**
    * Cancels (setInterval) paranoid checking. Needed for reinitialization. Will be assigned later.
    */
-  private cancelParanoidChecking: WReturnNothingFuncType = () => wNothing;
+  private paranoidCheckCanceler: () => WNothingType = () => wNothing;
 
-  public constructor(connectionConfig?: pg.ClientConfig, options: Partial<WPgOptionsType> = {}) {
+  public constructor(connectionConfig?: pg.ClientConfig, options?: Partial<WPgOptionsType>) {
     this.connectionConfig = connectionConfig || {};
-    this.options = {
-      paranoidChecking: options.paranoidChecking || 3000,
-      parse: options.parse || JSON.parse,
-      serialize: options.serialize || JSON.stringify,
-      native: options.native || false,
-      retryInterval: options.retryInterval || 500,
-      retryLimit: options.retryLimit || Infinity,
-      retryTimeout: options.retryTimeout || 3000
-    };
+    this.options = WPgListener.createOptions(options);
 
     this.emitter.setMaxListeners(0);
     this.notificationsEmitter.setMaxListeners(0);
 
-    this.emitter.on('notification', (notification: WPgNotificationType): WNothingType => {
-      this.notificationsEmitter.emit(notification.channel, notification.payload);
-      return;
-    });
+    this.emitter.on(
+      'notification',
+      (notification: WPgNotificationType): WNothingType => void this.notificationsEmitter.emit(
+        notification.channel,
+        notification.payload
+      )
+    );
 
     this.dbClient = this.createClient();
   }
@@ -104,9 +110,7 @@ export class WPgListener {
   public async connect(): WAsyncThrowableType<WNothingType> {
     this.initialize();
     await this.dbClient.connect();
-
-    this.emitter.emit('connected');
-    return;
+    return void this.emitter.emit('connected');
   }
 
   /**
@@ -114,10 +118,8 @@ export class WPgListener {
    */
   public async close(): WAsyncThrowableType<WNothingType> {
     this.isClosing = true;
-    this.cancelParanoidChecking();
-
-    await this.dbClient.end();
-    return;
+    this.paranoidCheckCanceler();
+    return void this.dbClient.end();
   }
 
   /**
@@ -137,8 +139,9 @@ export class WPgListener {
 
     this.subscribedChannels.add(channelName);
 
-    return this.dbClient
-      .query(`LISTEN ${format.ident(channelName)}`)
+    return this
+      .dbClient
+      .query(`LISTEN ${pgFormat.ident(channelName)}`)
       .then<WNothingType>(() => wNothing);
   }
 
@@ -148,11 +151,11 @@ export class WPgListener {
   public notify(channelName: string, payload?: any): Promise<pg.QueryResult> {
     const serializedPayload: string = (
       payload !== wNothing
-        ? `, ${format.literal(this.options.serialize(payload))}`
+        ? `, ${pgFormat.literal(this.options.serialize(payload))}`
         : ''
     );
 
-    return this.dbClient.query(`NOTIFY ${format.ident(channelName)}${serializedPayload}`);
+    return this.dbClient.query(`NOTIFY ${pgFormat.ident(channelName)}${serializedPayload}`);
   }
 
   /**
@@ -165,8 +168,9 @@ export class WPgListener {
 
     this.subscribedChannels.delete(channelName);
 
-    return this.dbClient
-      .query(`UNLISTEN ${format.ident(channelName)}`)
+    return this
+      .dbClient
+      .query(`UNLISTEN ${pgFormat.ident(channelName)}`)
       .then<WNothingType>(() => wNothing);
   }
 
@@ -174,7 +178,7 @@ export class WPgListener {
    * Unsubscribe from all existing channels
    */
   public unlistenAll(): WAsyncThrowableType<pg.QueryResult> {
-    this.subscribedChannels = new Set();
+    this.subscribedChannels.clear();
     return this.dbClient.query(`UNLISTEN *`);
   }
 
@@ -183,7 +187,7 @@ export class WPgListener {
    */
   private initialize(): WNothingType {
     // Wire the DB client events to our exposed emitter's events
-    this.cancelEventForwarding = forwardDBNotificationEvents(
+    this.cancelEventForwarding = wPgListenerCreator(
       this.dbClient,
       this.emitter,
       this.options.parse
@@ -193,7 +197,7 @@ export class WPgListener {
     this.dbClient.on('end', this.onDBClientErrorHandler.bind(this));
 
     if (this.options.paranoidChecking) {
-      this.cancelParanoidChecking = scheduleParanoidChecking(
+      this.paranoidCheckCanceler = wPgListenParanoidCheckScheduler(
         this.dbClient,
         this.options.paranoidChecking,
         this.reinitialize.bind(this)
@@ -210,6 +214,7 @@ export class WPgListener {
     if (!this.isReinitializing) {
       this.reinitialize();
     }
+
     return;
   }
 
@@ -224,13 +229,13 @@ export class WPgListener {
     this.isReinitializing = true;
 
     try {
-      this.cancelParanoidChecking();
+      this.paranoidCheckCanceler();
       this.cancelEventForwarding();
 
       this.dbClient.removeAllListeners();
-      this.dbClient.end();
+      await this.dbClient.end();
 
-      this.dbClient = await wPgReconnect(
+      this.dbClient = await wPgListenReconnecter(
         this.connectionConfig,
         this.options,
         (attempt: number): boolean => this.emitter.emit('reconnect', attempt)
@@ -243,7 +248,7 @@ export class WPgListener {
       await Promise.all(
         subscribedChannelsArray.map<Promise<WNothingType>>(
           (channelName: string) => this.dbClient
-            .query(`LISTEN ${format.ident(channelName)}`)
+            .query(`LISTEN ${pgFormat.ident(channelName)}`)
             .then<WNothingType>(() => wNothing)
         )
       );
@@ -266,8 +271,8 @@ export class WPgListener {
    */
   private createClient(): pg.Client {
     const effectiveConnectionConfig: pg.ClientConfig = { ...this.connectionConfig, keepAlive: true };
-    const Client: typeof pg.Client = this.options.native && pg.native ? pg.native.Client : pg.Client;
+    const ClientConstructor: typeof pg.Client = this.options.native && pg.native ? pg.native.Client : pg.Client;
 
-    return new Client(effectiveConnectionConfig);
+    return new ClientConstructor(effectiveConnectionConfig);
   }
 }
