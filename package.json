@@ -21,12 +21,12 @@
     "pg": "8.11.x"
   },
   "dependencies": {
-    "@w/utility": "file:../../@w-utility/w-utility-1.0.0.tgz",
     "pg": "8.11.x",
     "pg-format": "^1.0.4",
     "typed-emitter": "^0.1.0"
   },
   "devDependencies": {
+    "@w/utility": "file:../../@w-utility/w-utility-1.0.0.tgz",
     "@types/jest": "^29.5.1",
     "@types/node": "^20.2.5",
     "@types/pg": "^8.10.2",

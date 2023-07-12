@@ -18,7 +18,6 @@ export function wPgListenParanoidCheckScheduler(
 
   return function unschedule(): WNothingType {
     clearInterval(interval);
-    return;
   };
 }
 

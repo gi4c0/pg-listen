@@ -16,7 +16,7 @@ export function wPgListenEventHandlerCreator(
       return void emitter.emit('error', error);
     }
 
-    return void emitter.emit(
+    emitter.emit(
       'notification',
       {
         processId: notification.processId,

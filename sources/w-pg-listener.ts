@@ -110,7 +110,7 @@ export class WPgListener {
   public async connect(): WAsyncThrowableType<WNothingType> {
     this.initialize();
     await this.dbClient.connect();
-    return void this.emitter.emit('connected');
+    this.emitter.emit('connected');
   }
 
   /**
@@ -119,7 +119,7 @@ export class WPgListener {
   public async close(): WAsyncThrowableType<WNothingType> {
     this.isClosing = true;
     this.paranoidCheckCanceler();
-    return void this.dbClient.end();
+    this.dbClient.end();
   }
 
   /**
@@ -203,8 +203,6 @@ export class WPgListener {
         this.reinitialize.bind(this)
       );
     }
-
-    return;
   }
 
   /**
@@ -214,12 +212,10 @@ export class WPgListener {
     if (!this.isReinitializing) {
       this.reinitialize();
     }
-
-    return;
   }
 
   /**
-   * Re-initializes the connection (e.g. if error occured)
+   * Re-initializes the connection (e.g. if error occurred)
    */
   private async reinitialize(): WAsyncThrowableType<WNothingType> {
     if (this.isReinitializing || this.isClosing) {
@@ -262,8 +258,6 @@ export class WPgListener {
     } finally {
       this.isReinitializing = false;
     }
-
-    return;
   }
 
   /**

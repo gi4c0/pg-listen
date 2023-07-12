@@ -24,7 +24,7 @@ export async function wPgListenReconnecter(
       const connecting: Promise<void> = new Promise((resolve, reject): WNothingType => {
         newClient.once('connect', resolve);
         newClient.once('end', () => reject(wErrorCreator('Connection ended')));
-        return void newClient.once('error', reject);
+        newClient.once('error', reject);
       });
 
       await Promise.all([
